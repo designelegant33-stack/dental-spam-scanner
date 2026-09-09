@@ -1,0 +1,32 @@
+{
+  "japanese": [
+    "カジノ",
+    "オンラインカジノ",
+    "パチンコ",
+    "スロット",
+    "ギャンブル",
+    "賭博",
+    "ブックメーカー",
+    "パチスロ"
+  ],
+  "french": [
+    "casino en ligne",
+    "casino gratuit",
+    "machine à sous",
+    "machine a sous",
+    "bonus sans dépôt",
+    "bonus sans depot",
+    "paris sportifs",
+    "jeux d'argent",
+    "argent réel"
+  ],
+  "otherGamblingSpamSignals": [
+    "deneme bonusu veren siteler",
+    "deneme bonus veren siteler",
+    "bahis siteleri",
+    "bonus veren siteler",
+    "slot gacor",
+    "situs judi",
+    "togel"
+  ]
+}

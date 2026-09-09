@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(firecrawl --status)",
+      "Bash(mkdir -p .firecrawl/spam-check)",
+      "Bash(firecrawl search *)"
+    ]
+  }
+}
