@@ -1,4 +1,4 @@
-import asyncio, subprocess, json, re, sys, os
+import asyncio, subprocess, json, re, sys, os, random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from playwright.async_api import async_playwright
 
@@ -55,21 +55,40 @@ def scan_domain_curl(domain):
                                   'note': f'bot={len(bot)} user={len(user)}'})
 
     sitemap_urls = []
+    sub_sitemaps = []
     for path in ['/sitemap.xml', '/sitemap_index.xml', '/wp-sitemap.xml', '/sitemap1.xml']:
         try:
             r = subprocess.run(
                 ['curl', '-s', '-L', '--max-time', '10', f'https://{domain}{path}'],
                 capture_output=True, text=True
             )
+            # collect sub-sitemap .xml links to follow
+            sub_sitemaps += re.findall(r'<loc>([^<]+\.xml)</loc>', r.stdout)
             sitemap_urls += [u for u in re.findall(r'<loc>([^<]+)</loc>', r.stdout)
-                             if not u.endswith('.xml')][:100]
+                             if not u.endswith('.xml')]
+        except Exception:
+            pass
+    # follow sub-sitemaps (e.g. wp-sitemap-posts-post-1.xml, sitemap2.xml)
+    for sm in sub_sitemaps[:10]:
+        try:
+            r = subprocess.run(
+                ['curl', '-s', '-L', '--max-time', '10', sm],
+                capture_output=True, text=True
+            )
+            sitemap_urls += [u for u in re.findall(r'<loc>([^<]+)</loc>', r.stdout)
+                             if not u.endswith('.xml')]
         except Exception:
             pass
     if not sitemap_urls:
         sitemap_urls = [f'https://{domain}' + p
                         for p in ['/about', '/services', '/contact', '/blog', '/news', '/posts']]
+    # take first 50 (newest) + 50 random from the rest for broad coverage
+    head = sitemap_urls[:50]
+    tail = sitemap_urls[50:]
+    sample = random.sample(tail, min(50, len(tail)))
+    sitemap_urls = head + sample
 
-    for url in sitemap_urls[:100]:
+    for url in sitemap_urls:
         page = curl_fetch(url, GOOGLEBOT, timeout=10)
         for kw in keywords:
             if kw in page:
