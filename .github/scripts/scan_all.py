@@ -62,14 +62,14 @@ def scan_domain_curl(domain):
                 capture_output=True, text=True
             )
             sitemap_urls += [u for u in re.findall(r'<loc>([^<]+)</loc>', r.stdout)
-                             if not u.endswith('.xml')][:20]
+                             if not u.endswith('.xml')][:100]
         except Exception:
             pass
     if not sitemap_urls:
         sitemap_urls = [f'https://{domain}' + p
-                        for p in ['/about', '/services', '/contact', '/blog']]
+                        for p in ['/about', '/services', '/contact', '/blog', '/news', '/posts']]
 
-    for url in sitemap_urls[:20]:
+    for url in sitemap_urls[:100]:
         page = curl_fetch(url, GOOGLEBOT, timeout=10)
         for kw in keywords:
             if kw in page:
