@@ -1,5 +1,6 @@
-import subprocess, json, re, sys, os
+import asyncio, subprocess, json, re, sys, os
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from playwright.async_api import async_playwright
 
 repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 domain_ip = json.loads(open(os.path.join(repo, 'domain_ip.json'), encoding='utf-8-sig').read())
@@ -32,13 +33,12 @@ def curl_fetch(url, ua, timeout=15):
         return ''
 
 
-def scan_domain(domain):
+def scan_domain_curl(domain):
     hits = {'hidden': [], 'cloak': [], 'sitemap': []}
 
     bot = curl_fetch(f'https://{domain}', GOOGLEBOT)
     user = curl_fetch(f'https://{domain}', BROWSER_UA)
 
-    # hidden text
     for kw in keywords:
         for m in re.finditer(re.escape(kw), bot):
             win = bot[max(0, m.start()-250):m.end()+250]
@@ -46,7 +46,6 @@ def scan_domain(domain):
                 hits['hidden'].append({'kw': kw, 'ctx': win[:120]})
                 break
 
-    # cloaking
     for kw in keywords:
         if kw in bot and kw not in user:
             hits['cloak'].append({'kw': kw})
@@ -55,7 +54,6 @@ def scan_domain(domain):
             hits['cloak'].append({'kw': 'SIZE_MISMATCH',
                                   'note': f'bot={len(bot)} user={len(user)}'})
 
-    # sitemap crawl
     sitemap_urls = []
     for path in ['/sitemap.xml', '/sitemap_index.xml', '/wp-sitemap.xml', '/sitemap1.xml']:
         try:
@@ -64,7 +62,7 @@ def scan_domain(domain):
                 capture_output=True, text=True
             )
             sitemap_urls += [u for u in re.findall(r'<loc>([^<]+)</loc>', r.stdout)
-                             if not u.endswith('.xml')][:40]
+                             if not u.endswith('.xml')][:20]
         except Exception:
             pass
     if not sitemap_urls:
@@ -80,16 +78,72 @@ def scan_domain(domain):
                 hits['sitemap'].append({'url': url, 'kw': kw, 'ctx': ctx[:120]})
                 break
 
-    total = sum(len(v) for v in hits.values())
-    sys.stderr.write(f'done: {domain}  hits={total}\n')
     return domain, hits
 
 
+async def scan_domain_playwright(browser, semaphore, domain, curl_html):
+    """JS-rendered scan — catches spam injected by JavaScript after page load."""
+    js_hits = []
+    async with semaphore:
+        try:
+            context = await browser.new_context(
+                user_agent=GOOGLEBOT,
+                ignore_https_errors=True
+            )
+            page = await context.new_page()
+            await page.goto(f'https://{domain}', timeout=20000, wait_until='domcontentloaded')
+            await asyncio.sleep(2)
+            content = (await page.content()).lower()
+            await context.close()
+
+            for kw in keywords:
+                if kw in content and kw not in curl_html:
+                    m = re.search(re.escape(kw), content)
+                    win = content[max(0, m.start()-250):m.end()+250] if m else ''
+                    if hide_pat.search(win):
+                        js_hits.append({'kw': kw, 'type': 'js_hidden', 'ctx': win[:120]})
+                    else:
+                        js_hits.append({'kw': kw, 'type': 'js_only'})
+        except Exception:
+            pass
+    return domain, js_hits
+
+
+async def run_playwright_scan(domains, curl_results):
+    sys.stderr.write(f'\nStarting Playwright scan ({len(domains)} domains, 20 concurrent)...\n')
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        semaphore = asyncio.Semaphore(20)
+        tasks = [
+            scan_domain_playwright(browser, semaphore, d, curl_results.get(d, ''))
+            for d in domains
+        ]
+        results = await asyncio.gather(*tasks)
+        await browser.close()
+    return dict(results)
+
+
+# --- Phase 1: parallel curl scan ---
+sys.stderr.write('Phase 1: curl scan (25 parallel)...\n')
+curl_results = {}
 results = {}
+
 with ThreadPoolExecutor(max_workers=25) as pool:
-    futures = {pool.submit(scan_domain, d): d for d in domains}
+    futures = {pool.submit(scan_domain_curl, d): d for d in domains}
     for future in as_completed(futures):
         domain, hits = future.result()
         results[domain] = hits
+        curl_results[domain] = ''  # placeholder
+        total = sum(len(v) for v in hits.values())
+        sys.stderr.write(f'curl done: {domain}  hits={total}\n')
+
+# --- Phase 2: async Playwright scan ---
+sys.stderr.write('\nPhase 2: Playwright JS scan (20 concurrent)...\n')
+pw_results = asyncio.run(run_playwright_scan(domains, curl_results))
+
+for domain, js_hits in pw_results.items():
+    if js_hits:
+        results[domain]['js'] = js_hits
+        sys.stderr.write(f'JS hits: {domain}  {js_hits}\n')
 
 print(json.dumps(results, ensure_ascii=False))

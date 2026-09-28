@@ -12,7 +12,7 @@ today = date.today().isoformat()
 out_path = os.path.join(reports_dir, f'{today}.md')
 
 flagged = {d: h for d, h in results.items()
-           if any(h[k] for k in ['hidden', 'cloak', 'sitemap', 'js_hidden', 'js_cloak'])}
+           if any(h.get(k) for k in ['hidden', 'cloak', 'sitemap', 'js'])}
 clean = [d for d in results if d not in flagged]
 
 lines = [
@@ -26,14 +26,15 @@ if flagged:
     lines += ['## Flagged Domains', '']
     for domain, hits in flagged.items():
         lines.append(f'### {domain}')
-        for hit_type in ['hidden', 'cloak', 'sitemap', 'js_hidden', 'js_cloak']:
-            for h in hits[hit_type]:
+        for hit_type in ['hidden', 'cloak', 'sitemap', 'js']:
+            for h in hits.get(hit_type, []):
                 kw = h.get('kw', '')
                 ctx = h.get('ctx', h.get('note', ''))
                 url = h.get('url', '')
                 label = {'hidden': 'Hidden text', 'cloak': 'Cloaking',
-                         'sitemap': 'Sitemap page', 'js_hidden': 'JS hidden text',
-                         'js_cloak': 'JS-only keyword'}[hit_type]
+                         'sitemap': 'Sitemap page', 'js': 'JS-injected'}[hit_type]
+                if hit_type == 'js':
+                    label = 'JS hidden' if h.get('type') == 'js_hidden' else 'JS-only keyword'
                 loc = f' @ {url}' if url else ''
                 lines.append(f'- **{label}**: `{kw}`{loc}')
                 if ctx:
