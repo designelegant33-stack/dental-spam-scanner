@@ -4,7 +4,17 @@ from playwright.async_api import async_playwright
 
 repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 domain_ip = json.loads(open(os.path.join(repo, 'domain_ip.json'), encoding='utf-8-sig').read())
-domains = list(domain_ip.keys())
+
+# Allow filtering by IP via FILTER_IP env var (set from GitHub Actions input)
+filter_input = os.environ.get('FILTER_IP', 'all').strip()
+# Extract just the IP part (input may be "68.178.205.61 (79 domains)")
+filter_ip = filter_input.split()[0] if filter_input and filter_input != 'all' else None
+
+if filter_ip:
+    domains = [d for d, ip in domain_ip.items() if ip == filter_ip]
+    sys.stderr.write(f'Filtering to IP {filter_ip}: {len(domains)} domains\n')
+else:
+    domains = list(domain_ip.keys())
 
 kw_data = json.loads(open(os.path.join(repo, 'keywords.json'), encoding='utf-8-sig').read())
 keywords = []
