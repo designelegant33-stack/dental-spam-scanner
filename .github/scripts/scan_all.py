@@ -21,6 +21,25 @@ hide_pat = re.compile(
 GOOGLEBOT = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
 BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 
+# Known spam URL patterns hackers inject (not always in sitemaps)
+SPAM_PATHS = [
+    '/casino', '/casino/', '/casinos',
+    '/gambling', '/gambling/',
+    '/slot', '/slots', '/slot-online', '/slot-gacor',
+    '/judi', '/judi-bola', '/judi-online',
+    '/poker', '/poker-online',
+    '/togel', '/togel-online',
+    '/betting', '/sports-betting',
+    '/pachinko', '/pachislot',
+    '/blackjack', '/roulette',
+    '/スロット', '/カジノ', '/ギャンブル',
+    '/scommesse', '/giochi',
+    '/paris-sportifs', '/jeux',
+    '/sportwetten', '/spielautomaten',
+    '/apuestas', '/tragamonedas',
+    '/apostas', '/cassino',
+]
+
 
 def curl_fetch(url, ua, timeout=15):
     try:
@@ -95,6 +114,20 @@ def scan_domain_curl(domain):
                 m2 = re.search(re.escape(kw), page)
                 ctx = page[max(0, m2.start()-100):m2.end()+100] if m2 else ''
                 hits['sitemap'].append({'url': url, 'kw': kw, 'ctx': ctx[:120]})
+                break
+
+    # probe known spam URL patterns (catches non-indexed hidden pages)
+    for path in SPAM_PATHS:
+        url = f'https://{domain}{path}'
+        page = curl_fetch(url, GOOGLEBOT, timeout=8)
+        if not page or len(page) < 500:
+            continue
+        for kw in keywords:
+            if kw in page:
+                m2 = re.search(re.escape(kw), page)
+                ctx = page[max(0, m2.start()-100):m2.end()+100] if m2 else ''
+                hits['sitemap'].append({'url': url, 'kw': kw, 'ctx': ctx[:120],
+                                        'note': 'spam-path-probe'})
                 break
 
     return domain, hits
