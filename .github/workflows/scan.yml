@@ -8,7 +8,7 @@ on:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -19,9 +19,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: |
-          pip install playwright
-          playwright install chromium
+        run: echo "No extra dependencies needed"
 
       - name: Run spam scan
         run: python3 .github/scripts/scan_all.py > /tmp/scan_raw.json 2>/tmp/scan_log.txt
